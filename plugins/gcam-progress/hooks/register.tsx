@@ -45,7 +45,7 @@ case "$R" in "~"*) R="$HOME$(printf %s "$R" | cut -c2-)";; esac
 case "$L" in "~"*) L="$HOME$(printf %s "$L" | cut -c2-)";; esac
 # Reads a main_log.txt on stdin: last period, last solved period with its iterations, unsolved periods,
 # completed flag, period=year map.
-summ() { grep -a -o -E '^Period [0-9]+: [0-9]{4}|Iterations period [0-9]+: [0-9]+|did not solve period [0-9]+|^Model run completed' | awk '/^Period /{n=$2; sub(/:/,"",n); y[n]=$3; lp=n} /^Iterations period /{ip=$3; sub(/:/,"",ip); iv=$4} /^did not solve/{u[$NF]=1} /^Model run completed/{dn=1} END{for(k in y)m=m k"="y[k]" "; for(k in u)ul=ul k" "; print lp"|"ip"|"iv"|"ul"|"dn+0"|"m}'; }
+summ() { LC_ALL=C grep -a -o -E '^Period [0-9]+: [0-9]{4}|Iterations period [0-9]+: [0-9]+|did not solve period [0-9]+|^Model run completed' | awk '/^Period /{n=$2; sub(/:/,"",n); y[n]=$3; lp=n} /^Iterations period /{ip=$3; sub(/:/,"",ip); iv=$4} /^did not solve/{u[$NF]=1} /^Model run completed/{dn=1} END{for(k in y)m=m k"="y[k]" "; for(k in u)ul=ul k" "; print lp"|"ip"|"iv"|"ul"|"dn+0"|"m}'; }
 NOW=$(date +%s)
 echo "NOW|$NOW"
 NC=$(nproc --all 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
@@ -78,7 +78,7 @@ printf '%s' "$ALL" | sort -u | while IFS= read -r d; do
   m="$d/logs/main_log.txt"; [ -f "$m" ] || continue
   mt=$(stat -c %Y "$m" 2>/dev/null) || continue
   case "$LIVE" in *"$d"*) ;; *) [ $((NOW - mt)) -gt 86400 ] && continue;; esac
-  echo "LOG|$d|$mt|$(tail -c 8000000 "$m" | summ)"
+  echo "LOG|$d|$mt|$(summ < "$m")"
 done
 if [ -n "$R" ]; then
   for f in $(ls -t "$R"/*/timing.txt 2>/dev/null | head -40); do
@@ -96,7 +96,7 @@ if [ -n "$R" ]; then
     dn=$(head -1 "$L/$run.done" 2>/dev/null)
     out=$(grep -m1 -E '^(VALID|INVALID)' "$L/$run.out" 2>/dev/null | cut -c1-300)
     if [ -n "$ee" ] && [ $((NOW - ee)) -lt 43200 ] && [ -f "$R/$run/main_log.txt" ]; then
-      echo "RUNLOG|$run|$(tail -c 8000000 "$R/$run/main_log.txt" | summ)"
+      echo "RUNLOG|$run|$(summ < "$R/$run/main_log.txt")"
     fi
     tm=$(tail -1 "$f" | sed -n 's/^unknown_tags=\([0-9]*\) invalid_year=\([0-9]*\) unsolved=\([0-9]*\) ok=\([0-9]*\).*/\1,\2,\3,\4/p')
     echo "RUN|$run|$lane|$se|$ee|$rc|$dn|$thr|$tm|$scn|$out"
@@ -298,7 +298,11 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
   for (const p of procs) {
     const lg = logs.get(p.cwd)
     const key = laneKey(p.cwd)
-    const rec = recs.filter(r => r.lane === key && r.end === undefined && !usedRec.has(r)).sort((a, b) => b.start - a.start)[0]
+    // The open record (no EXIT yet) in this lane; one whose scenario matches the process's configuration
+    // first, then the latest START. A stopped run's record has its EXIT line and is never taken.
+    const rec = recs
+      .filter(r => r.lane === key && r.end === undefined && !usedRec.has(r))
+      .sort((a, b) => Number(b.scn === p.scn) - Number(a.scn === p.scn) || b.start - a.start)[0]
     if (rec) usedRec.add(rec)
     const procStart = now - p.secs
     const startAt = rec ? rec.start : procStart

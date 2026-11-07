@@ -95,7 +95,7 @@ Treat it as a rough guide. GCAM can spend up to its iteration limit (about 25,00
 ## Limits
 
 - One band slot: other plugins that draw above the prompt, such as replay-theater, hide this band when they do not pass the call on to the plugins beneath them. If the band does not show, disable one of the two in `/plugin`.
-- Years come from the `Period N: YYYY` lines in `main_log.txt`; only the last 8 MB of the log is read. If your log is elsewhere than `<run folder>/logs/main_log.txt`, the run shows without a period.
+- Years come from the `Period N: YYYY` lines in `main_log.txt`. If your log is elsewhere than `<run folder>/logs/main_log.txt`, the run shows without a period.
 - The plugin polls every 12 seconds while something is running, and once a minute when idle.
 - Runs of other users are not shown.
 

@@ -346,3 +346,17 @@ test('ETA: timed periods are kept in the plugin store for later runs', async ($,
   await $.command.run({ command: 'gcam-progress', args: '' })
   expect(flags.periodSecs).toEqual([180])
 })
+
+test('run records: a running process takes the open record of its own scenario, never a stopped one', async ($, on) => {
+  const raw = [
+    `NOW|${NOW}`,
+    'PROC|4001|/work/gcam/exe_rep_a|900|12-23|12|24|EA_s7|12|configuration_EA_s7.xml|2050',
+    `LOG|/work/gcam/exe_rep_a|${NOW - 4}|10|9|678||0|${YEARS}`,
+    `RUN|261107_EA_s7|a|${NOW - 900}||||12||EA_s7|`,
+    `RUN|261107_EA_s7_stopped|a|${NOW - 950}|${NOW - 920}|143||12|0,0,0,0|EA_s7|`,
+    `RUN|261107_OTHER_open|a|${NOW - 100}||||12||OTHER|`,
+  ].join('\n')
+  await setup($, on, { raw })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await dumpOf(ui)).toMatch(/12-23 EA_s7  2045  2040:678  15m/)
+})
