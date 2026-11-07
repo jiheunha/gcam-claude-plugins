@@ -257,7 +257,7 @@ test('reload without session.start: the first band draw starts polling', async (
   expect(await dumpOf(ui)).toContain('running')
 })
 
-test('band: at most 6 lines; running first, then the queue, then finished newest first; +N more on the last line', async ($, on) => {
+test('band: at most 5 lines; running first, then the queue, then finished newest first; +N more on the last line', async ($, on) => {
   const row = (kind: string, run: string, extra: object = {}) => ({ kind, run, lane: 'a', period: 'Period 9: 2040', iters: 'P8: 5', elapsed: '0:05:00', status: kind === 'running' ? 'running' : 'completed', ...extra })
   const rows = [
     row('running', 'RUN_1'), row('running', 'RUN_2'), row('running', 'RUN_3'),
@@ -272,12 +272,12 @@ test('band: at most 6 lines; running first, then the queue, then finished newest
   expect(text).toContain('RUN_3')
   expect(text).toContain('GCAM queued: Q_1 (a), Q_2 (a)')
   expect(text).toContain('DONE_1')
-  expect(text).toContain('DONE_2')
-  expect(text).not.toContain('DONE_3')
-  expect(text).toContain('+3 more (/gcam-progress)')
+  expect(text).not.toContain('DONE_2')
+  expect(text).not.toContain('DONE_3') // 3 running + queue + 1 finished = 5 lines; 4 finished dropped
+  expect(text).toContain('+4 more (/gcam-progress)')
 })
 
-test('band: with more than 6 running runs only 6 show, the queue is dropped and counted', async ($, on) => {
+test('band: with more than 5 running runs only 5 show, the queue is dropped and counted', async ($, on) => {
   const rows = [
     ...[1, 2, 3, 4, 5, 6, 7].map(i => ({ kind: 'running', run: `RUN_${i}`, lane: `l${i}`, period: 'Period 9: 2040', iters: 'P8: 5', elapsed: '0:05:00', status: 'running' })),
     { kind: 'queued', run: 'Q_1', lane: 'a', status: 'queued' },
@@ -287,10 +287,10 @@ test('band: with more than 6 running runs only 6 show, the queue is dropped and 
   on('state.get', () => ({ value: { value: { shape: 'snap-3', value: { at: '', note: '', rows } }, version: 1 } }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const text = await dumpOf(ui)
-  expect(text).toContain('RUN_6')
-  expect(text).not.toContain('RUN_7')
+  expect(text).toContain('RUN_5')
+  expect(text).not.toContain('RUN_6')
   expect(text).not.toContain('GCAM queued')
-  expect(text).toContain('+2 more (/gcam-progress)')
+  expect(text).toContain('+3 more (/gcam-progress)')
 })
 
 test('run records: a finished run shows the last solved period of its own log', async ($, on) => {

@@ -23,7 +23,7 @@ One line per run, left to right. Take the first line above:
 | Status | `running ⠋` | `running` with a spinner, or `finished` for runs that ended in the last 60 minutes. `finished stopped` means the log has no completion line. `(log idle N min)` means a running run has not written to its log for 45 minutes or more. |
 | Unsolved years | `2035 UNSOLVED` | In red: periods the log reports as `did not solve`. |
 
-The band holds at most 6 lines: running runs first, then one `GCAM queued:` line (run records only), then finished runs, newest first. Finished runs stay for 60 minutes. If lines were left out, the last line ends with `+N more (/gcam-progress)`.
+The band holds at most 5 lines: running runs first, then one `GCAM queued:` line (run records only), then finished runs, newest first. Finished runs stay for 60 minutes. If lines were left out, the last line ends with `+N more (/gcam-progress)`.
 
 ## The table
 
