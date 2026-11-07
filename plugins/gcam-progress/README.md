@@ -17,13 +17,11 @@ One line per run, left to right. Take the first line above:
 | CPUs or threads | `12-23`, `all` | The CPU range when the process is pinned to some CPUs only (with `taskset`, for example). Otherwise the configuration's `max-parallelism`, or `all` when it is 0 or less. |
 | Run | `REF_2050` | The scenario name from the configuration (`scenarioName`). A leading `YYMMDD_` date is dropped. A finished run the plugin never saw running shows its folder name instead (`exe_c`). |
 | Current year | `2045` | The model period being solved now, from the last `Period N: YYYY` line in `main_log.txt`. For a finished run, the last period it reached. |
-| Last solved | `2040:1014` | The last period that finished solving, and how many solver iterations it took. A restarted run adds where it began solving, for example `2050:455 from 2045` (see below). |
+| Last solved | `2040:1014` | The last period that finished solving, and how many solver iterations it took. |
 | Elapsed | `25m` | Time since `gcam.exe` started; for a finished run, its total run time. |
 | ETA | `ETA ~12m` | Rough time left (see [ETA](#eta)). Left out when there is no basis. |
 | Status | `running ⠋` | `running` with a spinner, or `finished` for runs that ended in the last 60 minutes. `finished stopped` means the log has no completion line. `(log idle N min)` means a running run has not written to its log for 45 minutes or more. |
 | Unsolved years | `2035 UNSOLVED` | In red: periods the log reports as `did not solve`. |
-
-`from <year>` marks a restarted run. When GCAM restarts from saved periods, it restores them with 1 iteration each and then really solves the rest. The plugin shows the first period that took more than 1 iteration after such restored periods, so `2050:455 from 2045` means the run restored everything up to 2040, solved 2045 and 2050, and needed 455 iterations for 2050.
 
 The band holds at most 6 lines: running runs first, then one `GCAM queued:` line (run records only), then finished runs, newest first. Finished runs stay for 60 minutes. If lines were left out, the last line ends with `+N more (/gcam-progress)`.
 
@@ -44,7 +42,7 @@ exe_c     exe_c                       Period 11: 2050  P10: 300            -    
 | Threads | `max-parallelism` from the configuration (`all` for 0 or less). |
 | CPUs | The CPU range when the process is pinned; empty otherwise. |
 | Period | GCAM's period number and its year. |
-| Iter (last solved) | `P<period>: <iterations>` of the last solved period, plus `from <year>` for a restarted run. |
+| Iter (last solved) | `P<period>: <iterations>` of the last solved period. |
 | Elapsed | `h:mm:ss`. `-` when the start time is unknown. |
 | ETA | As in the band. |
 | Status | `running`, `completed`, `completed, unsolved`, `stopped`; with run records also `VALID`, `INVALID (<reason>)` and `queued`. Unsolved periods follow as `P<n> <year> UNSOLVED`. |

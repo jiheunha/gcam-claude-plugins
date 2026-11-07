@@ -10,21 +10,21 @@ const PLAIN = [
   `NOW|${NOW}`,
   'PROC|4001|/work/gcam/exe_a|1500|12-23|12|24|REF_2050|12|configuration_REF_2050.xml|2050',
   'PROC|4002|/work/gcam/exe_b|600||24|24|NZE_2050|0|configuration_NZE_2050.xml|2050',
-  `LOG|/work/gcam/exe_a|${NOW - 4}|10|9|1014|8 |0||${YEARS}`,
-  `LOG|/work/gcam/exe_b|${NOW - 6}|7|6|2000||0||${YEARS}`,
-  `LOG|/work/gcam/exe_c|${NOW - 916}|11|10|300||1||${YEARS}`,
-  `LOG|/work/gcam/exe_d|${NOW - 2316}|8|7|450|6 |0||${YEARS}`,
+  `LOG|/work/gcam/exe_a|${NOW - 4}|10|9|1014|8 |0|${YEARS}`,
+  `LOG|/work/gcam/exe_b|${NOW - 6}|7|6|2000||0|${YEARS}`,
+  `LOG|/work/gcam/exe_c|${NOW - 916}|11|10|300||1|${YEARS}`,
+  `LOG|/work/gcam/exe_d|${NOW - 2316}|8|7|450|6 |0|${YEARS}`,
 ].join('\n')
 
 // The same, with run records and a chain (the optional extras).
 const RECORDS = [
   `NOW|${NOW}`,
   'PROC|4001|/work/gcam/exe_rep_a|1500|12-23|12|24|REF_2050|12|configuration_REF_2050.xml|2050',
-  `LOG|/work/gcam/exe_rep_a|${NOW - 4}|10|9|1014|8 |0||${YEARS}`,
+  `LOG|/work/gcam/exe_rep_a|${NOW - 4}|10|9|1014|8 |0|${YEARS}`,
   `RUN|261107_REF_2050_x|a|${NOW - 1500}||||12||REF_2050|`,
-  `RUNLOG|261107_OLD_ok|11|11|455||1|10|${YEARS}`,
+  `RUNLOG|261107_OLD_ok|11|11|455||1|${YEARS}`,
   `RUN|261107_OLD_ok|a|${NOW - 2000}|${NOW - 1000}|0|0|12||OLD_ok|VALID OLD_ok Iterations period 8: 473  core score = 1`,
-  `RUNLOG|261107_OLD_bad|10|9|1014|9 |0||${YEARS}`,
+  `RUNLOG|261107_OLD_bad|10|9|1014|9 |0|${YEARS}`,
   `RUN|261107_OLD_bad|b|${NOW - 2500}|${NOW - 1200}|143|2|12|0,0,1,0|OLD_bad|INVALID OLD_bad unknown=0 invalid=0 unsolved=1 ok=0 rc=143 Iterations period 8: 1014 `,
   'CHAIN|/work/logs/chain_set.status',
   'CS|2026-11-07 15:59:03 chain start',
@@ -34,7 +34,7 @@ const RECORDS = [
   'CL|    launch NEXT_one a ${D}_NEXT_one ""; waitfor ${D}_NEXT_one',
 ].join('\n')
 
-const IDLE = `NOW|${NOW}\nLOG|/work/gcam/exe_a|${NOW - 90000}|11|10|300||1||${YEARS}`
+const IDLE = `NOW|${NOW}\nLOG|/work/gcam/exe_a|${NOW - 90000}|11|10|300||1|${YEARS}`
 
 const BAND = {
   plugin: 'gcam-progress',
@@ -97,7 +97,7 @@ test('a run that ends keeps its scenario name and elapsed time', async ($, on) =
   const ref = { raw: PLAIN }
   await setup($, on, ref)
   await $.command.run({ command: 'gcam-progress', args: '' }) // sees REF_2050 running
-  ref.raw = [`NOW|${NOW}`, `LOG|/work/gcam/exe_a|${NOW - 60}|11|10|300||1||${YEARS}`].join('\n')
+  ref.raw = [`NOW|${NOW}`, `LOG|/work/gcam/exe_a|${NOW - 60}|11|10|300||1|${YEARS}`].join('\n')
   const res = await $.command.run({ command: 'gcam-progress', args: '' })
   expect(res.text).toMatch(/REF_2050\s+exe_a\s+12\s+Period 11: 2050\s+P10: 300\s+0:24:00\s+completed/)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -105,7 +105,7 @@ test('a run that ends keeps its scenario name and elapsed time', async ($, on) =
 })
 
 test('ETA comes from the periods the plugin watched finish, and is left out when there is no basis', async ($, on) => {
-  const logAt = (p: number, ip: number) => `LOG|/work/gcam/exe_a|${NOW}|${p}|${ip}|100||0||${YEARS}`
+  const logAt = (p: number, ip: number) => `LOG|/work/gcam/exe_a|${NOW}|${p}|${ip}|100||0|${YEARS}`
   const proc = `PROC|4001|/work/gcam/exe_a|1000||24|24|REF|12|configuration_REF.xml|2050`
   const ref = { raw: `NOW|${NOW}\n${proc}\n${logAt(7, 6)}` }
   await setup($, on, ref)
@@ -163,7 +163,7 @@ test('run records: the record names the run, finished records give the verdict, 
 })
 
 test('run records: INVALID shows its reason; unsolved-only drops the word', async ($, on) => {
-  const mk = (run: string, rc: string, tm: string, un: string) => `RUNLOG|261107_${run}|9|||${un}|0||${YEARS}\nRUN|261107_${run}|a|${NOW - 3000}|${NOW - 2000}|${rc}|2|12|${tm}|${run}|INVALID ${run}\n`
+  const mk = (run: string, rc: string, tm: string, un: string) => `RUNLOG|261107_${run}|9|||${un}|0|${YEARS}\nRUN|261107_${run}|a|${NOW - 3000}|${NOW - 2000}|${rc}|2|12|${tm}|${run}|INVALID ${run}\n`
   const raw = `NOW|${NOW}\n` + mk('A_only', '1', '0,0,2,0', '9 ') + mk('B_tag', '0', '1,0,0,1', '') + mk('C_to', '124', '0,0,0,0', '') + mk('D_crash', '139', '0,1,1,0', '10 ')
   await setup($, on, { raw })
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -293,27 +293,12 @@ test('band: with more than 6 running runs only 6 show, the queue is dropped and 
   expect(text).toContain('+2 more (/gcam-progress)')
 })
 
-test('run records: a finished run shows the last solved period of its own log, and where a restart began', async ($, on) => {
+test('run records: a finished run shows the last solved period of its own log', async ($, on) => {
   await setup($, on, { raw: RECORDS })
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const dump = await dumpOf(ui)
   // the verdict text only holds "Iterations period 8: 473"; the run's log copy ends at period 11 with 455 iterations
-  expect(dump).toMatch(/OLD_ok  2050  2050:455 from 2045/)
+  expect(dump).toMatch(/OLD_ok  2050  2050:455  /)
   expect(dump).not.toContain('2035:473')
-  // not restarted: no "from"
   expect(dump).toMatch(/OLD_bad  2045  2040:1014  /)
-  expect(dump).not.toMatch(/OLD_bad[^\n]*from/)
-})
-
-test('plain GCAM: a restarted run shows the year it really started solving', async ($, on) => {
-  const raw = [
-    `NOW|${NOW}`,
-    'PROC|4001|/work/gcam/exe_a|300||24|24|RESTARTED|12|configuration_R.xml|2050',
-    `LOG|/work/gcam/exe_a|${NOW - 2}|11|10|496||0|10|${YEARS}`,
-  ].join('\n')
-  await setup($, on, { raw })
-  const res = await $.command.run({ command: 'gcam-progress', args: '' })
-  expect(res.text).toContain('P10: 496 from 2045')
-  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await dumpOf(ui)).toMatch(/RESTARTED  2050  2045:496 from 2045/)
 })

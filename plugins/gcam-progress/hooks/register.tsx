@@ -42,8 +42,8 @@ PN=$1; XF=$2; R=$3; L=$4
 case "$R" in "~"*) R="$HOME$(printf %s "$R" | cut -c2-)";; esac
 case "$L" in "~"*) L="$HOME$(printf %s "$L" | cut -c2-)";; esac
 # Reads a main_log.txt on stdin: last period, last solved period with its iterations, unsolved periods,
-# completed flag, first period with more than 1 iteration after periods with 1 (a restarted run), period=year map.
-summ() { grep -a -o -E '^Period [0-9]+: [0-9]{4}|Iterations period [0-9]+: [0-9]+|did not solve period [0-9]+|^Model run completed' | awk '/^Period /{n=$2; sub(/:/,"",n); y[n]=$3; lp=n} /^Iterations period /{ip=$3; sub(/:/,"",ip); iv=$4; if(iv==1)one=1; else if(one&&fp==""&&iv>1)fp=ip} /^did not solve/{u[$NF]=1} /^Model run completed/{dn=1} END{for(k in y)m=m k"="y[k]" "; for(k in u)ul=ul k" "; print lp"|"ip"|"iv"|"ul"|"dn+0"|"fp"|"m}'; }
+# completed flag, period=year map.
+summ() { grep -a -o -E '^Period [0-9]+: [0-9]{4}|Iterations period [0-9]+: [0-9]+|did not solve period [0-9]+|^Model run completed' | awk '/^Period /{n=$2; sub(/:/,"",n); y[n]=$3; lp=n} /^Iterations period /{ip=$3; sub(/:/,"",ip); iv=$4} /^did not solve/{u[$NF]=1} /^Model run completed/{dn=1} END{for(k in y)m=m k"="y[k]" "; for(k in u)ul=ul k" "; print lp"|"ip"|"iv"|"ul"|"dn+0"|"m}'; }
 NOW=$(date +%s)
 echo "NOW|$NOW"
 NC=$(nproc --all 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
@@ -115,8 +115,8 @@ fi
 `
 
 type Proc = { pid: string; cwd: string; secs: number; cpu?: string; scn: string; thr: string; cfg: string; stop: string }
-// What summ() in the collector reads out of one main_log.txt. `from` is the first period actually solved by a restarted run.
-type Log = { mtime: number; period?: string; iterP?: string; iterN?: string; unsolved: string[]; done: boolean; from?: string; years: Record<string, string> }
+// What summ() in the collector reads out of one main_log.txt.
+type Log = { mtime: number; period?: string; iterP?: string; iterN?: string; unsolved: string[]; done: boolean; years: Record<string, string> }
 type Rec = {
   run: string
   lane: string
@@ -164,11 +164,7 @@ const itersOf = (text: string | undefined, years: Record<string, string>) => {
   for (const m of (text ?? '').matchAll(/Iterations period (\d+): (\d+)/g)) last = m
   return last ? itersFmt(last[1], last[2], years) : undefined
 }
-// A restarted run restores its first periods with 1 iteration each; `from` is the first period it really solved.
-const itersFmt = (p: string, n: string, years: Record<string, string>, from?: string) => {
-  const suffix = from ? ` from ${years[from] ?? `P${from}`}` : ''
-  return { iters: `P${p}: ${n}${suffix}`, band: `${years[p] ?? `P${p}`}:${n}${suffix}` }
-}
+const itersFmt = (p: string, n: string, years: Record<string, string>) => ({ iters: `P${p}: ${n}`, band: `${years[p] ?? `P${p}`}:${n}` })
 
 // Why a run record called a run INVALID. text: band wording ('' when unsolved periods are the only reason).
 const whyInvalid = (tm: string | undefined, rc: string | undefined) => {
@@ -239,10 +235,10 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
         stop: f[10] ?? '',
       })
     } else if (f[0] === 'LOG' || f[0] === 'RUNLOG') {
-      // LOG|folder|mtime|summary and RUNLOG|run|summary; summary = period|solved period|iterations|unsolved|completed|from|map
+      // LOG|folder|mtime|summary and RUNLOG|run|summary; summary = period|solved period|iterations|unsolved|completed|map
       const o = f[0] === 'LOG' ? 1 : 0
       const years: Record<string, string> = {}
-      for (const m of (f[o + 8] ?? '').matchAll(/(\d+)=(\d{4})/g)) years[m[1]] = m[2]
+      for (const m of (f[o + 7] ?? '').matchAll(/(\d+)=(\d{4})/g)) years[m[1]] = m[2]
       Object.assign(learned, years)
       const lg: Log = {
         mtime: f[0] === 'LOG' ? (num(f[2]) ?? 0) : 0,
@@ -251,7 +247,6 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
         iterN: f[o + 4] || undefined,
         unsolved: numsOf(f[o + 5]),
         done: f[o + 6] === '1',
-        from: f[o + 7] || undefined,
         years,
       }
       if (f[0] === 'LOG') logs.set(f[1], lg)
@@ -336,7 +331,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
 
     let label = 'running'
     if (ownsLog && now - lg.mtime > STALE_S) label += ` (log idle ${Math.round((now - lg.mtime) / 60)} min)`
-    const it = ownsLog && lg.iterP && lg.iterN ? itersFmt(lg.iterP, lg.iterN, years, lg.from) : undefined
+    const it = ownsLog && lg.iterP && lg.iterN ? itersFmt(lg.iterP, lg.iterN, years) : undefined
     running.push({
       kind: 'running',
       run,
@@ -400,7 +395,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
     // wrapper greps (and a restart prints 1 iteration for the periods it restores), so it is the fallback.
     const rl = runLogs.get(r.run)
     const years = { ...learned, ...(rl?.years ?? {}) }
-    const it = isLive ? undefined : rl?.iterP && rl.iterN ? itersFmt(rl.iterP, rl.iterN, years, rl.from) : itersOf(r.out, years)
+    const it = isLive ? undefined : rl?.iterP && rl.iterN ? itersFmt(rl.iterP, rl.iterN, years) : itersOf(r.out, years)
     const row: Row = {
       kind,
       run: r.run,
@@ -431,7 +426,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
     const sr = prev[dir]
     const years = { ...learned, ...lg.years }
     const unsolved = unsolvedStrs(lg.unsolved, years)
-    const it = lg.iterP && lg.iterN ? itersFmt(lg.iterP, lg.iterN, years, lg.from) : undefined
+    const it = lg.iterP && lg.iterN ? itersFmt(lg.iterP, lg.iterN, years) : undefined
     let kind: Row['kind'] = 'valid'
     let label = 'completed'
     if (!lg.done) {
