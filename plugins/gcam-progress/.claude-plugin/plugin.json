@@ -1,0 +1,37 @@
+{
+  "name": "gcam-progress",
+  "version": "0.2.0",
+  "description": "A band above the prompt that follows running GCAM jobs: period, iterations, elapsed time, ETA and unsolved years. /gcam-progress prints the full table.",
+  "author": { "name": "jiheun", "url": "https://github.com/jiheunha" },
+  "homepage": "https://github.com/jiheunha/gcam-claude-plugins",
+  "repository": "https://github.com/jiheunha/gcam-claude-plugins",
+  "license": "MIT",
+  "keywords": ["gcam", "progress", "status", "band"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "processName": {
+      "type": "string",
+      "title": "GCAM process name",
+      "description": "Name of the GCAM executable to look for among your running processes.",
+      "default": "gcam.exe"
+    },
+    "exeFolders": {
+      "type": "string",
+      "title": "GCAM exe folders to watch",
+      "description": "Optional. Colon-separated folders or globs (for example ~/gcam/exe_*) whose logs/main_log.txt is checked for finished runs. Folders where gcam.exe runs while this plugin is active are always included.",
+      "default": ""
+    },
+    "runRecordsDir": {
+      "type": "string",
+      "title": "Run records folder",
+      "description": "Optional. A folder with one subfolder per run holding a timing.txt written by a run wrapper. See docs/run-records.md in the plugin.",
+      "default": ""
+    },
+    "chainLogDir": {
+      "type": "string",
+      "title": "Chain log folder",
+      "description": "Optional. A folder with chain_*.status and chain_*.sh files, used for the queued line. See docs/run-records.md.",
+      "default": ""
+    }
+  }
+}

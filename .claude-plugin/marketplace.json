@@ -1,0 +1,12 @@
+{
+  "name": "gcam-claude-plugins",
+  "description": "Claude Code plugins for GCAM work.",
+  "owner": { "name": "jiheun", "url": "https://github.com/jiheunha" },
+  "plugins": [
+    {
+      "name": "gcam-progress",
+      "source": "./plugins/gcam-progress",
+      "description": "Live band above the prompt with the progress of running GCAM jobs; /gcam-progress prints the table."
+    }
+  ]
+}
