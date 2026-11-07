@@ -17,6 +17,8 @@ const STALE_S = 45 * 60 // running, but the log has not changed for this long
 const STEP_YEARS = 5 // model period length assumed beyond the periods a log has shown
 const DEFAULT_STOP_YEAR = 2100 // a configuration without a usable stop-year runs to here
 const ETA_STUCK = 3 // no ETA once the current period has taken this many times the typical one
+const MIN_PERIOD_S = 30 // shorter periods (calibration, restored by a restart) are not timed for the ETA
+const MACHINE_PERIODS = 20 // period times kept across runs and sessions (plugin store) as the ETA's basis for a new run
 
 const snap = atom(
   { plugin: 'gcam-progress', key: 'snap' } as const,
@@ -194,13 +196,15 @@ const fmtEta = (s: number) => {
   return m >= 60 ? `~${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `~${m}m`
 }
 
-// Time left, from how long this run's last solved periods took (3 at most), as the plugin saw
-// them change. Without a basis, undefined: no ETA. A period that has taken far longer than
-// the typical one is probably not solving, and GCAM may spend its whole iteration limit there.
-const etaOf = (s: SeenRun | undefined, now: number, curYear: number | undefined, stopRaw: string) => {
+// Time left. The typical period time is the mean of this run's last solved periods (3 at most),
+// as the plugin saw them change; before it has any, the median of the periods it has timed in
+// earlier runs on this machine (`machine`). Without either, undefined: no ETA. A period that has
+// taken far longer than the typical one is probably not solving, and GCAM may spend its whole
+// iteration limit there.
+const etaOf = (s: SeenRun | undefined, now: number, curYear: number | undefined, stopRaw: string, machine: number[]) => {
   const durs = (s?.durs ?? []).slice(-3)
-  if (!s || durs.length === 0 || s.cur === undefined || s.curAt === undefined || curYear === undefined || stopRaw === '') return undefined
-  const est = durs.reduce((a, b) => a + b, 0) / durs.length
+  const est = durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : median(machine)
+  if (!s || est === undefined || s.cur === undefined || s.curAt === undefined || curYear === undefined || stopRaw === '') return undefined
   const inCur = now - s.curAt
   if (inCur > ETA_STUCK * est) return undefined
   const stop = Number(stopRaw) > 0 ? Number(stopRaw) : DEFAULT_STOP_YEAR
@@ -208,7 +212,8 @@ const etaOf = (s: SeenRun | undefined, now: number, curYear: number | undefined,
   return Math.max(0, est - inCur) + rest * est
 }
 
-const build = (raw: string, prev: Seen, learned: Record<string, string>): { snapshot: Snapshot; seen: Seen } => {
+const build = (raw: string, prev: Seen, learned: Record<string, string>, machine: number[] = []): { snapshot: Snapshot; seen: Seen; timed: number[] } => {
+  const timed: number[] = [] // period times measured on this poll, for the machine's record
   let now = Math.floor(Date.now() / 1000)
   const procs: Proc[] = []
   const logs = new Map<string, Log>()
@@ -314,7 +319,13 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
         s.curAt = now
         s.curFull = !isNew // first seen in an earlier poll with no period yet: its start was watched
       } else if (s.cur !== period) {
-        if (s.curFull && s.curAt !== undefined) s.durs = [...(s.durs ?? []), now - s.curAt].slice(-6)
+        // Calibration periods and the periods a restart restores pass in seconds; they say nothing
+        // about how long a real period takes, so only longer ones count.
+        const d = s.curAt !== undefined ? now - s.curAt : 0
+        if (s.curFull && d >= MIN_PERIOD_S) {
+          s.durs = [...(s.durs ?? []), d].slice(-6)
+          timed.push(d)
+        }
         s.cur = period
         s.curAt = now
         s.curFull = true
@@ -323,7 +334,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
     nextSeen[p.cwd] = s
 
     const curYear = period !== undefined && years[period] ? Number(years[period]) : undefined
-    let etaSec = etaOf(s, now, curYear, p.stop)
+    let etaSec = etaOf(s, now, curYear, p.stop, machine)
     if (etaSec === undefined && !(s.durs && s.durs.length) && rec?.scn) {
       const typ = median(typical.get(rec.scn) ?? [])
       if (typ !== undefined && now - rec.start <= 1.5 * typ) etaSec = Math.max(0, typ - (now - rec.start))
@@ -481,6 +492,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>): { snap
       note: procs.length === 0 ? 'No GCAM run is active.' : `${procs.length} GCAM run(s) active`,
     },
     seen: nextSeen,
+    timed,
   }
 }
 
@@ -580,7 +592,10 @@ async function refresh($: Dollar) {
   try {
     const res = await $.process.run(['bash', '-c', COLLECT, 'gcam-progress', opts.processName, opts.exeFolders, opts.runRecordsDir, opts.chainLogDir], { timeoutMs: 20000 })
     const before = (await read($, seen)) ?? {}
-    const next = build(res.stdout, before, learned)
+    const stored = await $.store.get('periodSecs')
+    const machine = Array.isArray(stored) ? stored.filter((x): x is number => typeof x === 'number' && x >= MIN_PERIOD_S) : []
+    const next = build(res.stdout, before, learned, machine)
+    if (next.timed.length) await $.store.set('periodSecs', [...machine, ...next.timed].slice(-MACHINE_PERIODS))
     await update($, seen, () => next.seen)
     await update($, snap, () => next.snapshot)
     setTicking($, next.snapshot.rows.some(isLiveKind))

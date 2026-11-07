@@ -86,7 +86,9 @@ Change these in `/config` (plugin options):
 
 ## ETA
 
-The ETA is the average of the last three periods the plugin watched finish in that run, applied to the periods still to come up to the configuration's `stop-year` (2100 if it has none), plus what is left of the current period. Periods are assumed to be 5 years apart beyond the ones the log has shown. The plugin has to see at least one period finish before it can estimate, so a run that has just started, or a plugin started in the middle of a period, shows no ETA yet.
+The ETA takes a typical period time, applies it to the periods still to come up to the configuration's `stop-year` (2100 if it has none), and adds what is left of the current period. Periods are assumed to be 5 years apart beyond the ones the log has shown.
+
+The typical period time is the average of the last three periods the plugin watched start and finish in that run. Periods that pass in under 30 seconds are not counted: GCAM goes through its calibration periods in seconds, and a restarted run restores its saved periods with 1 iteration each. Until the run has a counted period of its own, the plugin uses the median of the last 20 period times it measured on this machine, kept across runs and sessions. So the very first runs after installing may show no ETA, and later runs show one as soon as they start solving.
 
 Treat it as a rough guide. GCAM can spend up to its iteration limit (about 25,000 iterations) on a period that does not solve, which takes many times longer than a period that does. When the current period has already taken more than three times the typical one, the ETA is left out. With run records, a run whose scenario has earlier valid runs falls back to their typical wall time until its own periods give a better basis.
 

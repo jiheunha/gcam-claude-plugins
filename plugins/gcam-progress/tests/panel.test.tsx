@@ -302,3 +302,47 @@ test('run records: a finished run shows the last solved period of its own log', 
   expect(dump).not.toContain('2035:473')
   expect(dump).toMatch(/OLD_bad  2045  2040:1014  /)
 })
+
+test('ETA: periods that pass in seconds (calibration, restored by a restart) are not timed', async ($, on) => {
+  const logAt = (p: number) => `LOG|/work/gcam/exe_a|${NOW}|${p}|${p - 1}|1||0|${YEARS}`
+  const proc = (secs: number) => `PROC|4001|/work/gcam/exe_a|${secs}||24|24|REF|12|configuration_REF.xml|2050`
+  const flags: Record<string, unknown> = {}
+  const ref = { raw: `NOW|${NOW}\n${proc(100)}\n${logAt(2)}` }
+  await setup($, on, ref, flags)
+  await $.command.run({ command: 'gcam-progress', args: '' })
+  for (const [i, p] of [[1, 3], [2, 4], [3, 5], [4, 6]] as const) {
+    ref.raw = `NOW|${NOW + i * 12}\n${proc(100 + i * 12)}\n${logAt(p)}`
+    await $.command.run({ command: 'gcam-progress', args: '' })
+  }
+  ref.raw = `NOW|${NOW + 60}\n${proc(160)}\n${logAt(6)}`
+  const res = await $.command.run({ command: 'gcam-progress', args: '' })
+  expect(res.text).not.toContain('~')
+  expect(flags.periodSecs).toBeUndefined()
+})
+
+test('ETA: a new run uses the period times kept from earlier runs on this machine', async ($, on) => {
+  const flags: Record<string, unknown> = { periodSecs: [240, 240, 240, 5] }
+  const raw = [
+    `NOW|${NOW}`,
+    'PROC|4001|/work/gcam/exe_a|900||24|24|REF|12|configuration_REF.xml|2050',
+    `LOG|/work/gcam/exe_a|${NOW}|9|8|500||0|${YEARS}`,
+  ].join('\n')
+  await setup($, on, { raw }, flags)
+  const res = await $.command.run({ command: 'gcam-progress', args: '' })
+  // 2040 just seen: 240 s for it, then 2045 and 2050 at 240 s each = 720 s
+  expect(res.text).toContain('~12m')
+})
+
+test('ETA: timed periods are kept in the plugin store for later runs', async ($, on) => {
+  const logAt = (p: number) => `LOG|/work/gcam/exe_a|${NOW}|${p}|${p - 1}|100||0|${YEARS}`
+  const proc = (secs: number) => `PROC|4001|/work/gcam/exe_a|${secs}||24|24|REF|12|configuration_REF.xml|2050`
+  const flags: Record<string, unknown> = {}
+  const ref = { raw: `NOW|${NOW}\n${proc(10)}\n${logAt(7)}` }
+  await setup($, on, ref, flags)
+  await $.command.run({ command: 'gcam-progress', args: '' })
+  ref.raw = `NOW|${NOW + 200}\n${proc(210)}\n${logAt(8)}`
+  await $.command.run({ command: 'gcam-progress', args: '' })
+  ref.raw = `NOW|${NOW + 380}\n${proc(390)}\n${logAt(9)}`
+  await $.command.run({ command: 'gcam-progress', args: '' })
+  expect(flags.periodSecs).toEqual([180])
+})
