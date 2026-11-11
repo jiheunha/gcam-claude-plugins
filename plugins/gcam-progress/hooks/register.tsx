@@ -5,7 +5,7 @@ import type { Row, Seen, SeenRun, Snapshot } from '../types'
 
 // GCAM run progress band. Read-only: the collector below only runs pgrep, readlink, ps, stat,
 // grep, tail, awk and date, on /proc and on plain-text files (the configuration a gcam.exe
-// was started with, and logs/main_log.txt in its folder). It never touches a GCAM process or
+// was started with, and its main log). It never touches a GCAM process or
 // its files. Never pgrep -f / pkill -f.
 
 const EVERY_MS = 12000
@@ -39,7 +39,7 @@ let opts: Opts = { processName: 'gcam.exe', exeFolders: '', runRecordsDir: '', c
 // Arguments: $1 process name, $2 colon-separated exe folder globs, $3 run records dir, $4 chain log dir.
 // No ${...} in here: this is a template literal. String.raw keeps backslashes.
 const COLLECT = String.raw`
-PN=$1; XF=$2; R=$3; L=$4
+PN=$1; XF=$2; R=$3; L=$4; SL=$5
 [ -n "$PN" ] || PN=gcam.exe
 case "$R" in "~"*) R="$HOME$(printf %s "$R" | cut -c2-)";; esac
 case "$L" in "~"*) L="$HOME$(printf %s "$L" | cut -c2-)";; esac
@@ -61,8 +61,17 @@ for p in $(pgrep -u "$(id -un)" -x "$PN" 2>/dev/null); do
   secs=$(ps -o etime= -p "$p" 2>/dev/null | tr -d ' ' | awk -F'[-:]' '{n=NF; s=$n+$(n-1)*60; if(n>=3)s+=$(n-2)*3600; if(n>=4)s+=$(n-3)*86400; print s}')
   al=$(awk '/Cpus_allowed_list/{print $2}' /proc/$p/status 2>/dev/null)
   cnt=$(echo "$al" | awk -F, '{n=0; for(i=1;i<=NF;i++){split($i,a,"-"); n+=(a[2]==""?1:a[2]-a[1]+1)} print n}')
-  echo "PROC|$p|$c|$secs|$al|$cnt|$NC|$scn|$thr|$(basename "$cfg")|$stp"
-  LIVE="$LIVE$c
+  # main_log's file from the log configuration (-L, else log_conf.xml in the run folder).
+  lc=$(tr '\0' '\n' < /proc/$p/cmdline 2>/dev/null | awk 'BEGIN{c="log_conf.xml"} t{c=$0;t=0;next} $0=="-L"||$0=="--logconf"{t=1;next} /^-L./{c=substr($0,3)} /^--logconf=/{c=substr($0,11)} END{print c}')
+  case "$lc" in /*) ;; *) lc="$c/$lc";; esac
+  ml=$(awk '/name="main_log"/{f=1} f&&/<FileName>/{sub(/.*<FileName>[ \t]*/,""); sub(/[ \t]*<\/FileName>.*/,""); print; exit}' "$lc" 2>/dev/null)
+  [ -n "$ml" ] || ml=logs/main_log.txt
+  case "$ml" in /*) ;; *) ml="$c/$ml";; esac
+  lk=""
+  if [ "$ml" != "$c/logs/main_log.txt" ]; then lk="$ml"; LIVEL="$LIVEL$ml
+"; fi
+  echo "PROC|$p|$c|$secs|$al|$cnt|$NC|$scn|$thr|$(basename "$cfg")|$stp|$lk"
+  [ -n "$lk" ] || LIVE="$LIVE$c
 "
 done
 ALL="$LIVE"
@@ -79,6 +88,13 @@ printf '%s' "$ALL" | sort -u | while IFS= read -r d; do
   mt=$(stat -c %Y "$m" 2>/dev/null) || continue
   case "$LIVE" in *"$d"*) ;; *) [ $((NOW - mt)) -gt 86400 ] && continue;; esac
   echo "LOG|$d|$mt|$(summ < "$m")"
+done
+# Logs named in a log configuration, keyed by the file: the live ones, and those the plugin saw running ($5).
+printf '%s\n%s' "$LIVEL" "$SL" | sort -u | while IFS= read -r m; do
+  [ -f "$m" ] || continue
+  mt=$(stat -c %Y "$m" 2>/dev/null) || continue
+  case "$LIVEL" in *"$m"*) ;; *) [ $((NOW - mt)) -gt 86400 ] && continue;; esac
+  echo "LOG|$m|$mt|$(summ < "$m")"
 done
 if [ -n "$R" ]; then
   for f in $(ls -t "$R"/*/timing.txt 2>/dev/null | head -40); do
@@ -116,7 +132,10 @@ if [ -n "$L" ]; then
 fi
 `
 
-type Proc = { pid: string; cwd: string; secs: number; cpu?: string; scn: string; thr: string; cfg: string; stop: string }
+// log: main_log's path when the log configuration names another file than logs/main_log.txt; the
+// run is then keyed by that file, so several runs can share one folder.
+type Proc = { pid: string; cwd: string; secs: number; cpu?: string; scn: string; thr: string; cfg: string; stop: string; log: string }
+const keyOf = (p: Proc) => p.log || p.cwd
 // What summ() in the collector reads out of one main_log.txt.
 type Log = { mtime: number; period?: string; iterP?: string; iterN?: string; unsolved: string[]; done: boolean; years: Record<string, string> }
 type Rec = {
@@ -238,6 +257,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
         thr: f[8] ?? '',
         cfg: f[9] ?? '',
         stop: f[10] ?? '',
+        log: f[11] ?? '',
       })
     } else if (f[0] === 'LOG' || f[0] === 'RUNLOG') {
       // LOG|folder|mtime|summary and RUNLOG|run|summary; summary = period|solved period|iterations|unsolved|completed|map
@@ -296,7 +316,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
 
   // Live runs: one row per gcam.exe process.
   for (const p of procs) {
-    const lg = logs.get(p.cwd)
+    const lg = logs.get(keyOf(p))
     const key = laneKey(p.cwd)
     // The open record (no EXIT yet) in this lane; one whose scenario matches the process's configuration
     // first, then the latest START. A stopped run's record has its EXIT line and is never taken.
@@ -312,10 +332,10 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
     const thrRaw = p.thr || rec?.thr || ''
 
     // The plugin's own timing of each period: the poll on which the current period changes.
-    const old = prev[p.cwd]
+    const old = prev[keyOf(p)]
     let s: SeenRun = old && Math.abs(old.procStart - procStart) <= 30 ? { ...old } : { run, startAt, procStart, thr: thrRaw, cpu: p.cpu, lastSeen: now }
     const isNew = !(old && Math.abs(old.procStart - procStart) <= 30)
-    s = { ...s, run, startAt, thr: thrRaw, cpu: p.cpu, lastSeen: now }
+    s = { ...s, run, startAt, thr: thrRaw, cpu: p.cpu, lastSeen: now, cwd: p.cwd, log: p.log || undefined }
     const period = ownsLog ? lg.period : undefined
     if (period !== undefined) {
       if (s.cur === undefined) {
@@ -335,7 +355,7 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
         s.curFull = true
       }
     }
-    nextSeen[p.cwd] = s
+    nextSeen[keyOf(p)] = s
 
     const curYear = period !== undefined && years[period] ? Number(years[period]) : undefined
     let etaSec = etaOf(s, now, curYear, p.stop, machine)
@@ -433,12 +453,14 @@ const build = (raw: string, prev: Seen, learned: Record<string, string>, machine
 
   // Finished runs that left no record: the last run in each exe folder with no live process,
   // named as the plugin saw it while it ran.
-  const liveDirs = new Set(procs.map(p => p.cwd))
-  for (const [dir, lg] of logs) {
-    if (liveDirs.has(dir) || now - lg.mtime > WINDOW_S) continue
+  // A key is the folder, or main_log's own path for a run whose log configuration renames it.
+  const liveKeys = new Set(procs.map(keyOf))
+  for (const [k, lg] of logs) {
+    if (liveKeys.has(k) || now - lg.mtime > WINDOW_S) continue
+    const sr = prev[k]
+    const dir = sr?.cwd ?? k
     const key = laneKey(dir)
     if (recs.some(r => r.lane === key && r.start <= lg.mtime + 5 && (r.end === undefined || r.end >= lg.mtime - 300))) continue
-    const sr = prev[dir]
     const years = { ...learned, ...lg.years }
     const unsolved = unsolvedStrs(lg.unsolved, years)
     const it = lg.iterP && lg.iterN ? itersFmt(lg.iterP, lg.iterN, years) : undefined
@@ -594,8 +616,9 @@ function stopAll() {
 
 async function refresh($: Dollar) {
   try {
-    const res = await $.process.run(['bash', '-c', COLLECT, 'gcam-progress', opts.processName, opts.exeFolders, opts.runRecordsDir, opts.chainLogDir], { timeoutMs: 20000 })
     const before = (await read($, seen)) ?? {}
+    const seenLogs = Object.values(before).map(s => s.log).filter((x): x is string => !!x).join('\n')
+    const res = await $.process.run(['bash', '-c', COLLECT, 'gcam-progress', opts.processName, opts.exeFolders, opts.runRecordsDir, opts.chainLogDir, seenLogs], { timeoutMs: 20000 })
     const stored = await $.store.get('periodSecs')
     const machine = Array.isArray(stored) ? stored.filter((x): x is number => typeof x === 'number' && x >= MIN_PERIOD_S) : []
     const next = build(res.stdout, before, learned, machine)

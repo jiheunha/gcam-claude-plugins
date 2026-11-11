@@ -1,6 +1,6 @@
 {
   "name": "gcam-progress",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A band above the prompt that follows running GCAM jobs: period, iterations, elapsed time, ETA and unsolved years. /gcam-progress prints the full table.",
   "author": { "name": "jiheun", "url": "https://github.com/jiheunha" },
   "homepage": "https://github.com/jiheunha/gcam-claude-plugins",

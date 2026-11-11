@@ -139,14 +139,14 @@ test('options reach the collector as arguments', { options: { processName: 'my-g
   await setup($, on, { raw: IDLE }, {}, argvs)
   await $.command.run({ command: 'gcam-progress', args: '' })
   const last = argvs[argvs.length - 1]
-  expect(last.slice(-4)).toEqual(['my-gcam', '/data/exe_*:/more', '/rec', '/chain'])
+  expect(last.slice(4, 8)).toEqual(['my-gcam', '/data/exe_*:/more', '/rec', '/chain'])
 })
 
 test('empty options: process name falls back to gcam.exe, the rest stays empty', { options: { processName: '', exeFolders: '', runRecordsDir: '', chainLogDir: '' } }, async ($, on) => {
   const argvs: string[][] = []
   await setup($, on, { raw: IDLE }, {}, argvs)
   await $.command.run({ command: 'gcam-progress', args: '' })
-  expect(argvs[argvs.length - 1].slice(-4)).toEqual(['gcam.exe', '', '', ''])
+  expect(argvs[argvs.length - 1].slice(4, 8)).toEqual(['gcam.exe', '', '', ''])
 })
 
 test('run records: the record names the run, finished records give the verdict, the chain gives the queue', async ($, on) => {
@@ -359,4 +359,32 @@ test('run records: a running process takes the open record of its own scenario, 
   await setup($, on, { raw })
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await dumpOf(ui)).toMatch(/12-23 EA_s7  2045  2040:678  15m/)
+})
+
+test('runs sharing a folder, each with its own main_log from its -L log configuration', async ($, on) => {
+  const D = '/work/gcam/exe'
+  const la = `${D}/logs/main_log_slow.txt`
+  const lb = `${D}/logs/main_log_fast.txt`
+  const ref = {
+    raw: [
+      `NOW|${NOW}`,
+      `PROC|4001|${D}|300|0-7|8|24|NDCslow|8|config_NDCslow.xml|2050|${la}`,
+      `PROC|4002|${D}|300|8-15|8|24|NDCfast|8|config_NDCfast.xml|2050|${lb}`,
+      `LOG|${la}|${NOW - 3}|11|10|842||0|${YEARS}`,
+      `LOG|${lb}|${NOW - 5}|9|8|546||0|${YEARS}`,
+    ].join('\n'),
+  }
+  const argvs: string[][] = []
+  await setup($, on, ref, {}, argvs)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const dump = await dumpOf(ui)
+  expect(dump).toMatch(/0-7 NDCslow  2050  2045:842  5m  running/)
+  expect(dump).toMatch(/8-15 NDCfast  2040  2035:546  5m  running/)
+  expect(dump).not.toContain('starting')
+  // slow ends; the plugin asks the collector for the log it saw and shows the run as finished
+  ref.raw = [`NOW|${NOW + 60}`, `PROC|4002|${D}|360|8-15|8|24|NDCfast|8|config_NDCfast.xml|2050|${lb}`, `LOG|${la}|${NOW + 30}|11|11|900||1|${YEARS}`, `LOG|${lb}|${NOW + 55}|9|8|546||0|${YEARS}`].join('\n')
+  const res = await $.command.run({ command: 'gcam-progress', args: '' })
+  expect(argvs[argvs.length - 1][8]).toContain(la)
+  expect(res.text).toMatch(/NDCslow\s+gcam\/exe\s+8\s+Period 11: 2050\s+P11: 900\s+0:05:30\s+completed/)
+  expect(res.text).toMatch(/NDCfast\s+gcam\/exe\s+8\s+8-15\s+Period 9: 2040/)
 })

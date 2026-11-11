@@ -33,6 +33,8 @@ export type SeenRun = {
   curAt?: number
   curFull?: boolean
   durs?: number[]
+  cwd?: string // the run's folder
+  log?: string // main_log's path when the log configuration names another file than logs/main_log.txt
 }
 export type Seen = Record<string, SeenRun>
 

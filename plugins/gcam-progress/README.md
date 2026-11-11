@@ -65,7 +65,7 @@ It needs Linux (or WSL), where `/proc` shows each process's folder and command l
 
 ## Use
 
-Nothing to set up for a plain GCAM install. The plugin shows every `gcam.exe` that runs under your user account on the machine where Claude Code runs, however it was started: from a terminal, tmux, `nohup`, a script or Claude. It does not see other users' runs or other machines. For each process it reads the configuration it was started with (`-C <file>`) for the scenario name and `max-parallelism`, and `logs/main_log.txt` in the folder the process runs in. It only reads; it never touches a GCAM process or its files.
+Nothing to set up for a plain GCAM install. The plugin shows every `gcam.exe` that runs under your user account on the machine where Claude Code runs, however it was started: from a terminal, tmux, `nohup`, a script or Claude. It does not see other users' runs or other machines. For each process it reads the configuration it was started with (`-C <file>`) for the scenario name and `max-parallelism`, and the main log. The main log is the `main_log` file named in the log configuration (`-L <file>`, else `log_conf.xml` in the run folder), and `logs/main_log.txt` when that names none. Several runs can share one folder as long as each writes its own main log. It only reads; it never touches a GCAM process or its files.
 
 - `/gcam-progress` prints the full table.
 - `/gcam-progress off` hides the band, also in new sessions. `/gcam-progress on` brings it back.
@@ -95,7 +95,8 @@ Treat it as a rough guide. GCAM can spend up to its iteration limit (about 25,00
 ## Limits
 
 - One band slot: other plugins that draw above the prompt, such as replay-theater, hide this band when they do not pass the call on to the plugins beneath them. If the band does not show, disable one of the two in `/plugin`.
-- Years come from the `Period N: YYYY` lines in `main_log.txt`. If your log is elsewhere than `<run folder>/logs/main_log.txt`, the run shows without a period.
+- Years come from the `Period N: YYYY` lines in the main log. If the plugin cannot find that log, the run shows `starting` instead of a year.
+- Folders in `exeFolders` are checked for `logs/main_log.txt` only. A run with a renamed main log shows as finished only if the plugin saw it running.
 - The plugin polls every 12 seconds while something is running, and once a minute when idle.
 - Runs of other users are not shown.
 
